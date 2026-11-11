@@ -1,0 +1,39 @@
+# Cost-model inputs. Each sourced figure carries a source URL + date read; UNVERIFIED where no source.
+# Read by scripts/cost_model.py. The budget guard imports the derived ceilings from cost_model.py.
+# All data is synthetic; the plan is free-tier, so within quota the dollar cost is ~0. The prices below
+# let the model estimate a hypothetical PAID overage (the kill-criterion check), not an expected spend.
+
+[model]
+# Groq Llama 3.3 70B is the production candidate (pinned for real at the Phase 5 bake-off).
+# Up to 3 chat calls per question (router + RAG and/or SQL). Embeddings are LOCAL (bge-small) → $0, no quota.
+llm_calls_per_query = 3            # router + answer path; BOTH is the worst case — judgement
+avg_tokens_in = 1200               # prompt incl. retrieved chunks / schema — estimate, UNVERIFIED
+avg_tokens_out = 350               # answer — estimate, UNVERIFIED
+# Hypothetical PAID overage prices (placeholder per-1k token values) used ONLY for the K1 overage estimate.
+# Groq free tier is the plan (429 hard-stop, no paid spend); confirm real per-1k values if a paid fallback is ever used.
+price_in_per_1k = 0.000075         # USD per 1k input tokens (placeholder) — UNVERIFIED
+price_out_per_1k = 0.0003          # USD per 1k output tokens (placeholder) — UNVERIFIED
+embed_calls_per_query = 1
+embed_tokens_per_query = 800
+embed_price_per_1k = 0.0           # LOCAL bge-small embeddings → $0
+
+[fixed_monthly]
+# Recommended free topology (all read 2026-11-05):
+# Vercel Hobby frontend ($0, non-commercial), Render Free FastAPI Docker ($0, sleeps 15min),
+# Neon Free Postgres+pgvector ($0, scale-to-zero 5min). Sources tracked in the cost notes.
+hosting_frontend = 0.0             # Vercel Hobby — vercel.com/docs/plans/hobby
+hosting_backend = 0.0             # Render Free — render.com/docs/free
+database = 0.0                     # Neon Free — neon.com/docs/introduction/plans
+storage = 0.0
+monitoring = 0.0
+
+[cases]
+# queries per DAY per case. Demo scale. Expected is a judgement for a portfolio demo.
+low = 5
+expected = 30
+"10x" = 300
+
+[budget]
+monthly_budget_usd = 0.0           # free-tier only (user). Near-zero is the hard constraint.
+daily_spend_cap_usd = 0.0          # $0 cap = hard stop at the free quota; a cap of 0 is also the stop switch
+eval_cost_usd_per_month = 0.0      # judge is local qwen2.5:7b → $0
