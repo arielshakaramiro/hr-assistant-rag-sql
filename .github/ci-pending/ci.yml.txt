@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: hr
+          POSTGRES_PASSWORD: hr
+          POSTGRES_DB: hr
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hr -d hr"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Point at the CI Postgres (the service maps to 5432, not the local 5433).
+      DATABASE_URL: postgresql+psycopg://hr:hr@localhost:5432/hr
+      DATABASE_URL_RO: postgresql+psycopg://hr_ro:hr_ro@localhost:5432/hr
+      SESSION_SECRET: ci-only-secret
+      COOKIE_SECURE: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Create the read-only role and pgvector extension
+        run: |
+          PGPASSWORD=hr psql -h localhost -U hr -d hr -c "CREATE ROLE hr_ro WITH LOGIN PASSWORD 'hr_ro'; GRANT CONNECT ON DATABASE hr TO hr_ro;"
+          PGPASSWORD=hr psql -h localhost -U hr -d hr -c "CREATE EXTENSION IF NOT EXISTS vector; GRANT USAGE ON SCHEMA public TO hr_ro;"
+      - name: Install
+        run: pip install -e './backend[dev]'
+      - name: Lint, format, typecheck
+        run: |
+          cd backend
+          ruff check .
+          ruff format --check .
+          mypy app
+      - name: Migrate and check schema matches models
+        run: cd backend && alembic upgrade head && alembic check
+      - name: Deterministic tests (no model required)
+        # The model-driven tests need an LLM endpoint; CI runs the suite minus those,
+        # covering the row-level-security, guardrail, interval and security checks.
+        run: cd backend && pytest -q -k "not chat and not rag and not sql_agent and not attacker" -p no:cacheprovider
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: cd frontend && npm ci
+      - run: cd frontend && npx oxlint && npx tsc -b && npm run build
