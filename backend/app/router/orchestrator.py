@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.reason_codes import Confidence, Outcome, Route
 from app.rag.answerer import answer_policy_question
 from app.router.classifier import classify
+from app.router.contextualizer import contextualize
 from app.sql_agent.agent import answer_data_question
 
 CLARIFY_MESSAGE = (
@@ -57,7 +58,15 @@ def _data_part(employee_id: int, question: str) -> tuple[str, dict[str, Any], Co
     return answer, sources, sa.confidence, outcome
 
 
-def answer(db: Session, employee_id: int, question: str) -> ChatResponse:
+def answer(
+    db: Session,
+    employee_id: int,
+    question: str,
+    history: list[tuple[str, str]] | None = None,
+) -> ChatResponse:
+    # Resolve a follow-up into a standalone question first; the rest of the pipeline is single-turn
+    # and unchanged. With no history this is a no-op (no model call), so first turns are identical.
+    question = contextualize(history or [], question)
     decision = classify(question)
     route = decision.route
 

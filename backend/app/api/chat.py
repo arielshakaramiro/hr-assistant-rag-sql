@@ -17,8 +17,19 @@ from app.router.orchestrator import answer
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 
 
+class Turn(BaseModel):
+    """One prior exchange, sent by the client for follow-up context. Untrusted input, so each
+    field is length-bounded; the orchestrator further caps how many turns it uses."""
+
+    question: str = Field(max_length=1000)
+    answer: str = Field(max_length=4000)
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
+    # Recent turns for multi-turn follow-ups. Client-held (nothing is persisted server-side);
+    # capped here and again in the contextualizer.
+    history: list[Turn] = Field(default_factory=list, max_length=10)
 
 
 @router.post("/ask")
@@ -39,8 +50,9 @@ def ask(
             detail={"code": ErrorCode.RATE_LIMITED.value, "message": "Daily limit reached."},
         )
 
+    history = [(t.question, t.answer) for t in body.history]
     with timed() as t:
-        result = answer(db, emp.id, body.question)
+        result = answer(db, emp.id, body.question, history)
     # Record metadata only — never the question or answer text.
     record(db, route=result.route, latency_ms=t["ms"], outcome=result.outcome)
     return {"success": True, "data": result.to_data()}

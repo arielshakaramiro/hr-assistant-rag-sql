@@ -32,6 +32,12 @@ export interface Me {
   role: string;
 }
 
+// One prior exchange sent back for follow-up context (backend stays stateless).
+export interface Turn {
+  question: string;
+  answer: string;
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(path, {
     method: "POST",
@@ -82,8 +88,8 @@ export const api = {
     ),
   logout: () => post<{ success: boolean }>("/api/v1/auth/logout", {}),
   me: () => get<{ success: boolean; data: Me }>("/api/v1/auth/me"),
-  ask: (question: string) =>
-    post<{ success: boolean; data: ChatData }>("/api/v1/chat/ask", { question }),
+  ask: (question: string, history: Turn[] = []) =>
+    post<{ success: boolean; data: ChatData }>("/api/v1/chat/ask", { question, history }),
   feedback: (question: string, answer: string, route: string, rating: "up" | "down") =>
     post<{ success: boolean }>("/api/v1/feedback", { question, answer, route, rating }),
   metrics: () => get<{ success: boolean; data: MetricsData }>("/api/v1/metrics"),

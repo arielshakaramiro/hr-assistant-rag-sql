@@ -27,6 +27,8 @@ class Case:
     expected_answer_contains: tuple[str, ...] = field(default_factory=tuple)
     expected_blocked: bool = False
     split: str = "dev"  # dev | heldout
+    # Prior (question, answer) turns for multi-turn follow-ups; empty for single-turn cases.
+    history: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
 
 # Questions are asked as the signed-in employee "maya@example.com" (id resolved at run time).
@@ -156,6 +158,35 @@ DEVELOPMENT: list[Case] = [
     ),
     # ---- regressions found by the attacker round (added after the planned cases) ----
     Case("reg1", "route", "leave", expected_route="CLARIFY"),  # a bare topic word is too vague
+    # ---- multi-turn follow-ups (history resolved by the contextualizer before routing) ----
+    Case(
+        "m1",
+        "route",
+        "What about on public holidays?",
+        history=(("What is the overtime policy?", "Weekday overtime is paid at 1.5x."),),
+        expected_route="POLICY",  # resolves to "overtime policy for public holidays"
+    ),
+    Case(
+        "m2",
+        "route",
+        "And what about annual leave?",
+        history=(("What is the sick leave policy?", "You get 14 paid sick days."),),
+        expected_route="POLICY",
+    ),
+    Case(
+        "m3",
+        "sql",
+        "And how many do I have left?",
+        history=(("What is the annual leave entitlement?", "Full-time employees get 12 days."),),
+        expected_answer_contains=("7",),  # resolves to the user's own remaining balance (12 − 5)
+    ),
+    Case(
+        "m4",
+        "route",
+        "Show me those records",
+        history=(("Was I late last month?", "You were late once."),),
+        expected_route="DATA",
+    ),
 ]
 
 HELDOUT: list[Case] = [

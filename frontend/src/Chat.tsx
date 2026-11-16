@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, ApiError, type ChatData, type Sources } from "./api";
+import { api, ApiError, type ChatData, type Sources, type Turn as HistoryTurn } from "./api";
 import { Icon } from "./Icon";
 
 interface Turn {
@@ -27,11 +27,17 @@ export function Chat({ onOpenSources }: { onOpenSources: (s: Sources) => void })
     const q = question.trim();
     if (!q || busy) return;
     const id = nextId.current++;
+    // Send the last few completed turns as context so a follow-up ("what about last year?")
+    // resolves. Backend caps this again; nothing is persisted server-side.
+    const history: HistoryTurn[] = turns
+      .filter((t): t is Turn & { data: ChatData } => Boolean(t.data))
+      .slice(-3)
+      .map((t) => ({ question: t.question, answer: t.data.answer }));
     setInput("");
     setBusy(true);
     setTurns((t) => [...t, { id, question: q, pending: true }]);
     try {
-      const res = await api.ask(q);
+      const res = await api.ask(q, history);
       setTurns((t) => t.map((x) => (x.id === id ? { ...x, data: res.data, pending: false } : x)));
     } catch (ex) {
       const rate = ex instanceof ApiError && ex.status === 429;
