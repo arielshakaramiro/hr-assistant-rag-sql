@@ -85,6 +85,20 @@ def test_blocked_query_is_surfaced(page: Page) -> None:
     expect(page.locator(".bubble.assistant").last).to_be_visible(timeout=60000)
 
 
+def test_admin_sees_team_dashboard(page: Page) -> None:
+    # An HR admin signs in and opens the team overview: whole-company aggregates + the roster.
+    page.goto(BASE)
+    page.fill("#email", "hr@example.com")
+    page.fill("#pw", "demo-hr")
+    page.get_by_role("button", name="Sign in").click()
+    expect(page.get_by_text("Ask about policy")).to_be_visible(timeout=10000)
+    page.get_by_role("button", name="Team overview").click()
+    expect(page.get_by_role("heading", name="Team overview")).to_be_visible(timeout=10000)
+    # Roster lists all three seeded employees, including the admin.
+    expect(page.get_by_role("cell", name="Rina Hartono")).to_be_visible()
+    expect(page.get_by_role("cell", name="Maya Putri")).to_be_visible()
+
+
 def test_wrong_password_shows_generic_error(page: Page) -> None:
     page.goto(BASE)
     page.fill("#email", "maya@example.com")

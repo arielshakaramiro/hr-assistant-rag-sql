@@ -81,6 +81,31 @@ export interface MetricsData {
   by_route: Record<string, number>;
 }
 
+// One roster entry on the HR-admin team dashboard (whole-company, aggregate — no raw rows).
+export interface RosterRow {
+  full_name: string;
+  department: string;
+  role: string;
+  entitlement_days: number;
+  used_days: number;
+  remaining_days: number;
+}
+
+export interface TeamOverview {
+  headcount: number;
+  by_department: Record<string, number>;
+  leave: {
+    entitlement_days: number;
+    used_days: number;
+    remaining_days: number;
+    pending_requests: number;
+  };
+  attendance: Record<string, number>;
+  claims_count: Record<string, number>;
+  claims_amount: Record<string, number>;
+  roster: RosterRow[];
+}
+
 // The metadata envelope streamed before any answer tokens (everything but the answer text).
 export interface StreamMeta {
   route: Route;
@@ -168,4 +193,5 @@ export const api = {
   feedback: (question: string, answer: string, route: string, rating: "up" | "down") =>
     post<{ success: boolean }>("/api/v1/feedback", { question, answer, route, rating }),
   metrics: () => get<{ success: boolean; data: MetricsData }>("/api/v1/metrics"),
+  team: () => get<{ success: boolean; data: TeamOverview }>("/api/v1/admin/team"),
 };
