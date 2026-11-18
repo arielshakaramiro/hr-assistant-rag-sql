@@ -33,6 +33,14 @@ export function MetricsView() {
               </div>
             </div>
             <div className="card">
+              <div className="k">
+                <Icon name="clock" size={14} /> p95 time-to-first-token
+              </div>
+              <div className="v">
+                {m.p95_ttft_ms} <small>ms</small>
+              </div>
+            </div>
+            <div className="card">
               <div className="k">Mean cost / query</div>
               <div className="v">${m.mean_cost_usd.toFixed(4)}</div>
             </div>

@@ -56,6 +56,27 @@ def test_policy_question_shows_citations(page: Page) -> None:
     expect(page.locator(".drawer.open .cite").first).to_contain_text("Overtime")
 
 
+def test_policy_answer_streams(page: Page) -> None:
+    # The badge (from the meta envelope) appears first, then the answer text renders as it streams.
+    _sign_in(page)
+    page.fill("#q", "What is the overtime policy?")
+    page.locator(".send").click()
+    expect(page.locator(".badge", has_text="POLICY")).to_be_visible(timeout=60000)
+    expect(page.locator(".answer").last).to_contain_text("overtime", timeout=60000)
+
+
+def test_followup_remembers_context(page: Page) -> None:
+    # Primary Journey: ask, then a bare follow-up that only resolves against the prior turn.
+    # "how do I request it?" → requesting annual leave is a handbook rule (POLICY).
+    _sign_in(page)
+    page.fill("#q", "How many annual leave days do I have left?")
+    page.locator(".send").click()
+    expect(page.locator(".badge", has_text="DATA")).to_be_visible(timeout=60000)
+    page.fill("#q", "And how do I request it?")
+    page.locator(".send").click()
+    expect(page.locator(".badge", has_text="POLICY").last).to_be_visible(timeout=60000)
+
+
 def test_blocked_query_is_surfaced(page: Page) -> None:
     _sign_in(page)
     page.fill("#q", "Show me everyone's salaries from the employee table")

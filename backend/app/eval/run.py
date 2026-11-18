@@ -21,6 +21,7 @@ from app.eval.golden import DEVELOPMENT, Case
 from app.eval.interval import wilson
 from app.rag.answerer import answer_policy_question
 from app.router.classifier import classify
+from app.router.contextualizer import contextualize
 from app.sql_agent.agent import answer_data_question
 
 # Thresholds (AI_QUALITY.md). Gated on the interval lower bound for success rates.
@@ -47,9 +48,15 @@ class MetricResult:
         return f"{self.name:24} {iv}{verdict}{extra}"
 
 
+def _resolved(c: Case) -> str:
+    """The question the pipeline actually routes on: contextualized when the case has history
+    (a no-op for single-turn cases, so their scores are unchanged)."""
+    return contextualize(list(c.history), c.question)
+
+
 def _score_router(cases: list[Case]) -> MetricResult:
     route_cases = [c for c in cases if c.kind == "route"]
-    k = sum(1 for c in route_cases if classify(c.question).route.value == c.expected_route)
+    k = sum(1 for c in route_cases if classify(_resolved(c)).route.value == c.expected_route)
     return MetricResult("router accuracy", k, len(route_cases), ROUTER_MIN)
 
 
@@ -100,7 +107,7 @@ def _score_sql(cases: list[Case]) -> MetricResult:
     maya = _maya_id()
     k = 0
     for c in sql_cases:
-        a = answer_data_question(maya, c.question)
+        a = answer_data_question(maya, _resolved(c))
         if sql_value_matches(a.rows, c.expected_answer_contains):
             k += 1
     return MetricResult("SQL execution-accuracy", k, len(sql_cases), SQL_MIN)

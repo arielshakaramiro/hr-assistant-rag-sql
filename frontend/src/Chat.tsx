@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { api, ApiError, type ChatData, type Sources } from "./api";
+import { api, type ChatData, type Sources, type Turn as HistoryTurn } from "./api";
 import { Icon } from "./Icon";
 
 interface Turn {
@@ -7,7 +7,9 @@ interface Turn {
   question: string;
   data?: ChatData;
   error?: boolean;
-  pending?: boolean;
+  pending?: boolean; // before the meta envelope arrives (typing dots)
+  streaming?: boolean; // tokens arriving (answer grows, cursor shown)
+  rate?: boolean;
 }
 
 const CHIPS = [
@@ -27,20 +29,33 @@ export function Chat({ onOpenSources }: { onOpenSources: (s: Sources) => void })
     const q = question.trim();
     if (!q || busy) return;
     const id = nextId.current++;
+    // Send the last few completed turns as context so a follow-up ("what about last year?")
+    // resolves. Backend caps this again; nothing is persisted server-side.
+    const history: HistoryTurn[] = turns
+      .filter((t): t is Turn & { data: ChatData } => Boolean(t.data))
+      .slice(-3)
+      .map((t) => ({ question: t.question, answer: t.data.answer }));
     setInput("");
     setBusy(true);
     setTurns((t) => [...t, { id, question: q, pending: true }]);
-    try {
-      const res = await api.ask(q);
-      setTurns((t) => t.map((x) => (x.id === id ? { ...x, data: res.data, pending: false } : x)));
-    } catch (ex) {
-      const rate = ex instanceof ApiError && ex.status === 429;
-      setTurns((t) =>
-        t.map((x) => (x.id === id ? { ...x, error: true, pending: false, rate } : x)),
-      );
-    } finally {
-      setBusy(false);
-    }
+    const patch = (fn: (x: Turn) => Turn) =>
+      setTurns((t) => t.map((x) => (x.id === id ? fn(x) : x)));
+
+    await api.askStream(q, history, {
+      // The envelope arrives first: route/confidence/sources are known, answer starts empty.
+      onMeta: (m) => {
+        const data: ChatData = { ...m, answer: "" };
+        patch((x) => ({ ...x, data, pending: false, streaming: true }));
+      },
+      // Each token appends to the growing answer text.
+      onToken: (text) => {
+        patch((x) => (x.data ? { ...x, data: { ...x.data, answer: x.data.answer + text } } : x));
+      },
+      onDone: () => patch((x) => ({ ...x, streaming: false })),
+      onError: () =>
+        patch((x) => ({ ...x, error: true, pending: false, streaming: false })),
+    });
+    setBusy(false);
   }
 
   return (
@@ -102,7 +117,7 @@ function Message({
   turn,
   onOpenSources,
 }: {
-  turn: Turn & { rate?: boolean };
+  turn: Turn;
   onOpenSources: (s: Sources) => void;
 }) {
   const [rating, setRating] = useState<"up" | "down" | null>(null);
@@ -128,14 +143,18 @@ function Message({
         {turn.error && (
           <div className="notice error">
             <Icon name="warn" size={18} />
-            <span>
-              {turn.rate
-                ? "You're asking a lot quickly — give it a moment and try again."
-                : "Couldn't reach the model just now. Please try again."}
-            </span>
+            <span>Couldn't reach the model just now. Please try again.</span>
           </div>
         )}
-        {d && <Answer d={d} onOpenSources={onOpenSources} rating={rating} setRating={rate} />}
+        {d && (
+          <Answer
+            d={d}
+            streaming={Boolean(turn.streaming)}
+            onOpenSources={onOpenSources}
+            rating={rating}
+            setRating={rate}
+          />
+        )}
       </div>
     </div>
   );
@@ -143,11 +162,13 @@ function Message({
 
 function Answer({
   d,
+  streaming,
   onOpenSources,
   rating,
   setRating,
 }: {
   d: ChatData;
+  streaming: boolean;
   onOpenSources: (s: Sources) => void;
   rating: "up" | "down" | null;
   setRating: (r: "up" | "down") => void;
@@ -181,17 +202,20 @@ function Answer({
           <span>{d.answer}</span>
         </div>
       ) : (
-        <p className="answer">{d.answer}</p>
+        <p className="answer">
+          {d.answer}
+          {streaming && <span className="cursor" aria-hidden="true" />}
+        </p>
       )}
 
-      {hasSources && (
+      {!streaming && hasSources && (
         <button className="srcbtn" type="button" onClick={() => onOpenSources(d.sources)}>
           <Icon name="check" size={14} />
           {d.sources.sql !== undefined ? " View SQL & result" : ` View ${d.sources.citations?.length} citations`}
         </button>
       )}
 
-      {!blocked && !abstained && (
+      {!streaming && !blocked && !abstained && (
         <div className="feedback">
           <span>Was this helpful?</span>
           <button
