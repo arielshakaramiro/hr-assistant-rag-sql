@@ -104,7 +104,7 @@ docker build -t hr-assistant .
 docker run --rm -p 8000:8000 --env-file backend/.env hr-assistant
 ```
 
-**Demo accounts** (synthetic): `maya@example.com` / `demo-maya` · `adi@example.com` / `demo-adi`.
+**Demo accounts** (synthetic): `maya@example.com` / `demo-maya` · `adi@example.com` / `demo-adi` · `hr@example.com` / `demo-hr` (HR admin — sees the team dashboard).
 
 ## Commands
 

@@ -27,10 +27,30 @@ from app.rag.embedder import embed
 
 DATA_DIR = Path(__file__).resolve().parents[3] / "data" / "policy"
 
-# Two distinct employees (isolation tests rely on them). Demo passwords go in the README.
+# Two distinct employees (isolation tests rely on them) plus one HR admin for the team
+# dashboard. Demo passwords go in the README. Each row carries an explicit role.
 EMPLOYEES = [
-    {"email": "maya@example.com", "pw": "demo-maya", "name": "Maya Putri", "dept": "Engineering"},
-    {"email": "adi@example.com", "pw": "demo-adi", "name": "Adi Santoso", "dept": "Finance"},
+    {
+        "email": "maya@example.com",
+        "pw": "demo-maya",
+        "name": "Maya Putri",
+        "dept": "Engineering",
+        "role": "employee",
+    },
+    {
+        "email": "adi@example.com",
+        "pw": "demo-adi",
+        "name": "Adi Santoso",
+        "dept": "Finance",
+        "role": "employee",
+    },
+    {
+        "email": "hr@example.com",
+        "pw": "demo-hr",
+        "name": "Rina Hartono",
+        "dept": "People",
+        "role": "hr_admin",
+    },
 ]
 
 
@@ -42,7 +62,7 @@ def _seed_employees(db: object) -> list[Employee]:
             password_hash=hash_password(e["pw"]),
             full_name=e["name"],
             department=e["dept"],
-            role="employee",
+            role=e["role"],
         )
         db.add(emp)  # type: ignore[attr-defined]
         rows.append(emp)
@@ -51,12 +71,15 @@ def _seed_employees(db: object) -> list[Employee]:
 
 
 def _seed_records(db: object, emps: list[Employee]) -> None:
-    maya, adi = emps
+    # Maya/Adi carry the hand-worked golden numbers and the isolation pair; the admin (Rina)
+    # only needs a leave_balance row so the roster has three entries.
+    maya, adi, rina = emps
     # Maya: entitlement 12, used 5 → 7 remaining (the golden-set hand-worked number).
     db.add_all(  # type: ignore[attr-defined]
         [
             LeaveBalance(employee_id=maya.id, year=2026, entitlement_days=12, used_days=5),
             LeaveBalance(employee_id=adi.id, year=2026, entitlement_days=12, used_days=2),
+            LeaveBalance(employee_id=rina.id, year=2026, entitlement_days=12, used_days=0),
             LeaveRecord(
                 employee_id=maya.id,
                 leave_type="annual",

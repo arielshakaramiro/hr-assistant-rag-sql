@@ -38,4 +38,15 @@ def current_employee(
     return emp
 
 
-__all__ = ["get_db", "current_employee", "COOKIE_NAME"]
+def require_hr_admin(emp: Employee = Depends(current_employee)) -> Employee:
+    """Guard for the HR-admin surface. The role comes only from the session-resolved employee,
+    never the client (SECURITY.md §2); a non-admin is rejected with 403 before any team read."""
+    if emp.role != "hr_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": ErrorCode.FORBIDDEN.value, "message": "HR admin access required."},
+        )
+    return emp
+
+
+__all__ = ["get_db", "current_employee", "require_hr_admin", "COOKIE_NAME"]
