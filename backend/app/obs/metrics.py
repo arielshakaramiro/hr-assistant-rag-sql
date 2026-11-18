@@ -28,19 +28,37 @@ class MetricsSummary:
     mean_cost_usd: float
     failure_rate: float
     by_route: dict[str, int]
+    p95_ttft_ms: int  # p95 time-to-first-token over streamed answers (0 if none yet)
 
 
 def record(
-    db: Session, route: str, latency_ms: int, outcome: str, est_cost_usd: float = 0.0
+    db: Session,
+    route: str,
+    latency_ms: int,
+    outcome: str,
+    est_cost_usd: float = 0.0,
+    ttft_ms: int | None = None,
 ) -> None:
     db.add(
-        QueryMetric(route=route, latency_ms=latency_ms, outcome=outcome, est_cost_usd=est_cost_usd)
+        QueryMetric(
+            route=route,
+            latency_ms=latency_ms,
+            outcome=outcome,
+            est_cost_usd=est_cost_usd,
+            ttft_ms=ttft_ms,
+        )
     )
     db.commit()
     # Structured log line (no Q/A text) for external aggregation if wired later.
     logger.info(
         json.dumps(
-            {"route": route, "latency_ms": latency_ms, "outcome": outcome, "cost": est_cost_usd}
+            {
+                "route": route,
+                "latency_ms": latency_ms,
+                "outcome": outcome,
+                "cost": est_cost_usd,
+                "ttft_ms": ttft_ms,
+            }
         )
     )
 
@@ -59,10 +77,18 @@ def timed():
 def summary(db: Session) -> MetricsSummary:
     total = db.scalar(select(func.count(QueryMetric.id))) or 0
     if total == 0:
-        return MetricsSummary(0, 0, 0.0, 0.0, {r: 0 for r in ("POLICY", "DATA", "BOTH", "CLARIFY")})
+        return MetricsSummary(
+            0, 0, 0.0, 0.0, {r: 0 for r in ("POLICY", "DATA", "BOTH", "CLARIFY")}, 0
+        )
 
     # p95 latency via percentile_cont (Postgres).
     p95 = db.scalar(select(func.percentile_cont(0.95).within_group(QueryMetric.latency_ms.asc())))
+    # p95 time-to-first-token over streamed rows only (ttft_ms is null for /ask and blocked).
+    p95_ttft = db.scalar(
+        select(func.percentile_cont(0.95).within_group(QueryMetric.ttft_ms.asc())).where(
+            QueryMetric.ttft_ms.is_not(None)
+        )
+    )
     mean_cost = db.scalar(select(func.avg(QueryMetric.est_cost_usd))) or 0
     failures = (
         db.scalar(select(func.count(QueryMetric.id)).where(QueryMetric.outcome == "error")) or 0
@@ -79,4 +105,5 @@ def summary(db: Session) -> MetricsSummary:
         mean_cost_usd=round(float(mean_cost), 6),
         failure_rate=round(failures / total, 4),
         by_route=by_route,
+        p95_ttft_ms=int(p95_ttft or 0),
     )

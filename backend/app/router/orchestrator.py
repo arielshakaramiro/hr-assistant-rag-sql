@@ -7,13 +7,14 @@ endpoint from the session — never taken from the question.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.core.reason_codes import Confidence, Outcome, Route
-from app.rag.answerer import answer_policy_question
+from app.rag.answerer import answer_policy_question, stream_policy_answer
 from app.router.classifier import classify
 from app.router.contextualizer import contextualize
 from app.sql_agent.agent import answer_data_question
@@ -96,6 +97,80 @@ def answer(
     return ChatResponse(
         route.value, decision.reason, merged, conf.value, Outcome.SUCCESS.value, sources
     )
+
+
+@dataclass
+class StreamMeta:
+    """The non-text envelope sent before tokens: everything known without the generated answer."""
+
+    route: str
+    route_reason: str
+    confidence: str
+    outcome: str
+    sources: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class StreamHandle:
+    """A streamed answer: `meta` is ready immediately; `tokens` yields display text. Call
+    `final_outcome()` AFTER exhausting `tokens` — a policy sentinel can flip the outcome to
+    abstained mid-stream, so the recorded metric uses this rather than the pre-stream meta."""
+
+    meta: StreamMeta
+    tokens: Iterator[str]
+    final_outcome: Callable[[], str]
+
+
+def answer_stream(
+    db: Session,
+    employee_id: int,
+    question: str,
+    history: list[tuple[str, str]] | None = None,
+) -> StreamHandle:
+    """Streaming counterpart of `answer`. Only the POLICY text is token-streamed (the one
+    LLM-generated surface); DATA/CLARIFY answers and the DATA prefix of BOTH are deterministic and
+    yielded whole. Routing, retrieval and SQL run first so the meta envelope is complete up front.
+    The non-stream `answer` is untouched and still used by `/ask`, eval and the attacker round."""
+    question = contextualize(history or [], question)
+    decision = classify(question)
+    route = decision.route
+
+    if route is Route.CLARIFY:
+        meta = StreamMeta(
+            route.value, decision.reason, Confidence.LOW.value, Outcome.ABSTAINED.value
+        )
+        return StreamHandle(meta, iter([CLARIFY_MESSAGE]), lambda: Outcome.ABSTAINED.value)
+
+    if route is Route.DATA:
+        ans, sources, conf, outcome = _data_part(employee_id, question)
+        meta = StreamMeta(route.value, decision.reason, conf.value, outcome.value, sources)
+        data_outcome = outcome.value
+        return StreamHandle(meta, iter([ans]), lambda: data_outcome)
+
+    if route is Route.POLICY:
+        ps = stream_policy_answer(db, question)
+        outcome = Outcome.ABSTAINED if ps.abstained else Outcome.SUCCESS
+        sources = {"citations": [asdict(c) for c in ps.citations]}
+        meta = StreamMeta(route.value, decision.reason, ps.confidence.value, outcome.value, sources)
+        # ps.abstained can flip mid-stream (sentinel), so read it after tokens are exhausted.
+        return StreamHandle(
+            meta,
+            ps.tokens,
+            lambda: Outcome.ABSTAINED.value if ps.abstained else Outcome.SUCCESS.value,
+        )
+
+    # BOTH: the data part is deterministic (emit whole, first), then stream the policy part.
+    d_ans, d_src, _, _ = _data_part(employee_id, question)
+    ps = stream_policy_answer(db, question)
+    sources = {**{"citations": [asdict(c) for c in ps.citations]}, **d_src}
+    conf = Confidence.LOW if ps.confidence is Confidence.LOW else Confidence.HIGH
+    meta = StreamMeta(route.value, decision.reason, conf.value, Outcome.SUCCESS.value, sources)
+
+    def _both_tokens() -> Iterator[str]:
+        yield f"{d_ans}\n\n"
+        yield from ps.tokens
+
+    return StreamHandle(meta, _both_tokens(), lambda: Outcome.SUCCESS.value)
 
 
 def _format_rows(rows: list[dict]) -> str:

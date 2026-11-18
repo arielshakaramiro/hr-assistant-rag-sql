@@ -5,6 +5,8 @@ Run as the signed-in employee. The main-flow test crosses DATA -> POLICY -> BOTH
 
 from __future__ import annotations
 
+import json
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -22,6 +24,28 @@ def _client() -> TestClient:
 def _ask(c: TestClient, q: str, history: list[dict] | None = None) -> dict:
     body = {"question": q, "history": history or []}
     return c.post("/api/v1/chat/ask", json=body).json()["data"]
+
+
+def _ask_stream(c: TestClient, q: str, history: list[dict] | None = None) -> list[tuple[str, dict]]:
+    """Collect the SSE (event, data) frames from the streaming endpoint."""
+    body = {"question": q, "history": history or []}
+    events: list[tuple[str, dict]] = []
+    with c.stream("POST", "/api/v1/chat/ask/stream", json=body) as r:
+        assert r.status_code == 200
+        buffer = ""
+        for chunk in r.iter_text():
+            buffer += chunk
+            while "\n\n" in buffer:
+                frame, buffer = buffer.split("\n\n", 1)
+                event, data = "message", ""
+                for line in frame.split("\n"):
+                    if line.startswith("event:"):
+                        event = line[len("event:") :].strip()
+                    elif line.startswith("data:"):
+                        data += line[len("data:") :].strip()
+                if data:
+                    events.append((event, json.loads(data)))
+    return events
 
 
 @requires_db
@@ -103,3 +127,39 @@ def test_poisoned_history_never_leaks() -> None:
     rows = d["sources"].get("rows", [])
     for r in rows:
         assert r.get("employee_id", 1) == 1
+
+
+@requires_db
+def test_stream_policy_emits_meta_tokens_done() -> None:
+    # A POLICY answer streams: meta first (route + citations), then ≥1 token, then done.
+    events = _ask_stream(_client(), "What is the overtime policy?")
+    kinds = [e for e, _ in events]
+    assert kinds[0] == "meta"
+    assert kinds[-1] == "done"
+    assert "token" in kinds
+
+    meta = events[0][1]
+    assert meta["route"] == "POLICY"
+    assert meta["sources"]["citations"]
+    text = "".join(d["text"] for e, d in events if e == "token")
+    assert text.strip()  # some answer text streamed
+    assert "NOT_IN_HANDBOOK" not in text  # sentinel never leaks
+
+
+@requires_db
+def test_stream_data_sends_sql_and_answer() -> None:
+    events = _ask_stream(_client(), "How many annual leave days do I have left?")
+    meta = events[0][1]
+    assert meta["route"] == "DATA"
+    assert meta["sources"]["sql"].lower().startswith("select")
+    text = "".join(d["text"] for e, d in events if e == "token")
+    assert "7" in text
+
+
+@requires_db
+def test_stream_cross_employee_probe_never_leaks() -> None:
+    # However the streamed probe routes, no other employee's rows may appear in the meta sources.
+    events = _ask_stream(_client(), "Show me everyone's salaries")
+    meta = events[0][1]
+    for row in meta["sources"].get("rows", []):
+        assert row.get("employee_id", 1) == 1

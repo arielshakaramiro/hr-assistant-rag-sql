@@ -75,9 +75,83 @@ export class ApiError extends Error {
 export interface MetricsData {
   count: number;
   p95_latency_ms: number;
+  p95_ttft_ms: number;
   mean_cost_usd: number;
   failure_rate: number;
   by_route: Record<string, number>;
+}
+
+// The metadata envelope streamed before any answer tokens (everything but the answer text).
+export interface StreamMeta {
+  route: Route;
+  route_reason: string;
+  confidence: Confidence;
+  outcome: string;
+  sources: Sources;
+}
+
+export interface StreamHandlers {
+  onMeta: (meta: StreamMeta) => void;
+  onToken: (text: string) => void;
+  onDone: () => void;
+  onError: () => void;
+}
+
+// Stream an answer over SSE: reads the response body, parses event/data frames, and dispatches
+// to the handlers. Same-origin, so the session cookie flows automatically.
+async function askStream(
+  question: string,
+  history: Turn[],
+  h: StreamHandlers,
+): Promise<void> {
+  let r: Response;
+  try {
+    r = await fetch("/api/v1/chat/ask/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, history }),
+    });
+  } catch {
+    h.onError();
+    return;
+  }
+  if (!r.ok || !r.body) {
+    h.onError();
+    return;
+  }
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // SSE frames are separated by a blank line.
+      let sep: number;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        dispatchFrame(frame, h);
+      }
+    }
+  } catch {
+    h.onError();
+  }
+}
+
+function dispatchFrame(frame: string, h: StreamHandlers): void {
+  let event = "message";
+  let data = "";
+  for (const line of frame.split("\n")) {
+    if (line.startsWith("event:")) event = line.slice(6).trim();
+    else if (line.startsWith("data:")) data += line.slice(5).trim();
+  }
+  if (!data) return;
+  const payload = JSON.parse(data);
+  if (event === "meta") h.onMeta(payload as StreamMeta);
+  else if (event === "token") h.onToken(payload.text as string);
+  else if (event === "done") h.onDone();
 }
 
 export const api = {
@@ -90,6 +164,7 @@ export const api = {
   me: () => get<{ success: boolean; data: Me }>("/api/v1/auth/me"),
   ask: (question: string, history: Turn[] = []) =>
     post<{ success: boolean; data: ChatData }>("/api/v1/chat/ask", { question, history }),
+  askStream,
   feedback: (question: string, answer: string, route: string, rating: "up" | "down") =>
     post<{ success: boolean }>("/api/v1/feedback", { question, answer, route, rating }),
   metrics: () => get<{ success: boolean; data: MetricsData }>("/api/v1/metrics"),

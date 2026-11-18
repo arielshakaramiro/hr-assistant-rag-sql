@@ -23,6 +23,7 @@ def metrics(
         "data": {
             "count": s.count,
             "p95_latency_ms": s.p95_latency_ms,
+            "p95_ttft_ms": s.p95_ttft_ms,
             "mean_cost_usd": s.mean_cost_usd,
             "failure_rate": s.failure_rate,
             "by_route": s.by_route,

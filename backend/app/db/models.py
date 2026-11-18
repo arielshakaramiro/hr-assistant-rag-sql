@@ -174,6 +174,8 @@ class QueryMetric(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     route: Mapped[str] = mapped_column(String(10))
-    latency_ms: Mapped[int] = mapped_column(Integer)
+    latency_ms: Mapped[int] = mapped_column(Integer)  # total time = time-to-last-token
     est_cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), default=0)
     outcome: Mapped[str] = mapped_column(String(12))  # success | abstained | blocked | error
+    # Time-to-first-token for streamed answers; null for non-streamed (/ask) and blocked rows.
+    ttft_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
