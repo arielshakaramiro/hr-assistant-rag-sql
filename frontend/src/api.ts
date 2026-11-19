@@ -106,6 +106,47 @@ export interface TeamOverview {
   roster: RosterRow[];
 }
 
+// The signed-in employee's own records (GET /api/v1/me/*). Read-only, scoped to themselves.
+export interface LeaveRecordRow {
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  days: number;
+  status: string;
+}
+
+export interface LeaveSummary {
+  entitlement_days: number;
+  used_days: number;
+  remaining_days: number;
+  records: LeaveRecordRow[];
+}
+
+export interface AttendanceRecordRow {
+  work_date: string;
+  status: string;
+  minutes_late: number;
+}
+
+export interface AttendanceSummary {
+  counts: Record<string, number>;
+  records: AttendanceRecordRow[];
+}
+
+export interface ClaimRow {
+  claim_type: string;
+  amount: number;
+  currency: string;
+  status: string;
+  submitted: string;
+}
+
+export interface ClaimsSummary {
+  claims: ClaimRow[];
+  totals_count: Record<string, number>;
+  totals_amount: Record<string, number>;
+}
+
 // The metadata envelope streamed before any answer tokens (everything but the answer text).
 export interface StreamMeta {
   route: Route;
@@ -194,4 +235,8 @@ export const api = {
     post<{ success: boolean }>("/api/v1/feedback", { question, answer, route, rating }),
   metrics: () => get<{ success: boolean; data: MetricsData }>("/api/v1/metrics"),
   team: () => get<{ success: boolean; data: TeamOverview }>("/api/v1/admin/team"),
+  myLeave: () => get<{ success: boolean; data: LeaveSummary }>("/api/v1/me/leave"),
+  myAttendance: () =>
+    get<{ success: boolean; data: AttendanceSummary }>("/api/v1/me/attendance"),
+  myClaims: () => get<{ success: boolean; data: ClaimsSummary }>("/api/v1/me/claims"),
 };
