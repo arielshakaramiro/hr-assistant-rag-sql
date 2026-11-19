@@ -239,4 +239,6 @@ export const api = {
   myAttendance: () =>
     get<{ success: boolean; data: AttendanceSummary }>("/api/v1/me/attendance"),
   myClaims: () => get<{ success: boolean; data: ClaimsSummary }>("/api/v1/me/claims"),
+  // Health is a bare {status, version} (no success/data envelope).
+  health: () => get<{ status: string; version: string }>("/api/v1/health"),
 };
