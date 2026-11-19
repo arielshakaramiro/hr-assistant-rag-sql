@@ -85,6 +85,18 @@ def test_blocked_query_is_surfaced(page: Page) -> None:
     expect(page.locator(".bubble.assistant").last).to_be_visible(timeout=60000)
 
 
+def test_leave_view_shows_real_data(page: Page) -> None:
+    # The "My leave" menu now reads the signed-in employee's real rows (no sample data).
+    _sign_in(page)
+    page.get_by_role("button", name="My leave").click()
+    expect(page.get_by_role("heading", name="My leave")).to_be_visible(timeout=10000)
+    # Hand-worked from seed: Maya's remaining = 12 - 5 = 7, shown in the Remaining card.
+    expect(page.locator(".card", has_text="Remaining")).to_contain_text("7")
+    # A real seeded row is present; the sample-data label is gone.
+    expect(page.locator("table.data")).to_contain_text("annual")
+    expect(page.get_by_text("sample demo data")).to_have_count(0)
+
+
 def test_admin_sees_team_dashboard(page: Page) -> None:
     # An HR admin signs in and opens the team overview: whole-company aggregates + the roster.
     page.goto(BASE)
