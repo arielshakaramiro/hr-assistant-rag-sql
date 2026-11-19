@@ -44,6 +44,10 @@ jobs:
           mypy app
       - name: Migrate and check schema matches models
         run: cd backend && alembic upgrade head && alembic check
+      - name: Seed synthetic data (no policy ingestion, so no embedding model download)
+        # The deterministic tests (auth/admin/me/isolation) need the seeded employees + records
+        # but not policy chunks; --no-policies skips the only step that loads the embedding model.
+        run: cd backend && python -m app.db.seed --no-policies
       - name: Deterministic tests (no model required)
         # The model-driven tests need an LLM endpoint; CI runs the suite minus those,
         # covering the row-level-security, guardrail, interval and security checks.

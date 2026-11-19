@@ -37,7 +37,8 @@ app.include_router(me_router)
 
 @app.get("/api/v1/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    # Version lets the status page confirm which build is live in the demo.
+    return {"status": "ok", "version": __version__}
 
 
 # Serve the built frontend (one container, ADR-10). The SPA's client-side routing means any

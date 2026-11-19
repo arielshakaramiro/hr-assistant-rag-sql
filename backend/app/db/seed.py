@@ -166,7 +166,13 @@ def _ingest_policies(db: object) -> int:
     return n
 
 
-def seed() -> None:
+def seed(with_policies: bool = True) -> None:
+    """Seed synthetic employees + records and (by default) ingest the policy handbook.
+
+    with_policies=False skips the handbook ingestion, which is the only step that loads the
+    embedding model. CI uses that to seed the data its non-model tests need (auth/admin/me/
+    isolation) without downloading model weights; the demo and RAG tests use the default.
+    """
     with SessionLocal() as db:
         # Idempotent: truncate (resets identity sequences so demo IDs are stable) then reseed.
         db.execute(
@@ -179,7 +185,7 @@ def seed() -> None:
 
         emps = _seed_employees(db)
         _seed_records(db, emps)
-        n_chunks = _ingest_policies(db)
+        n_chunks = _ingest_policies(db) if with_policies else 0
         db.commit()
 
         first_id = db.scalar(select(Employee.id).limit(1))
@@ -187,4 +193,7 @@ def seed() -> None:
 
 
 if __name__ == "__main__":
-    seed()
+    import sys
+
+    # `python -m app.db.seed --no-policies` skips handbook ingestion (no embedding model).
+    seed(with_policies="--no-policies" not in sys.argv)

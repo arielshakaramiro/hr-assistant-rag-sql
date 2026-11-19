@@ -8,4 +8,6 @@ client = TestClient(app)
 def test_health_ok() -> None:
     r = client.get("/api/v1/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
+    body = r.json()
+    assert body["status"] == "ok"
+    assert body["version"]  # the live build version, for the status page

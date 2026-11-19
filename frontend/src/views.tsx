@@ -82,6 +82,44 @@ export function MetricsView() {
   );
 }
 
+export function StatusView() {
+  const [h, setH] = useState<{ status: string; version: string } | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    api
+      .health()
+      .then(setH)
+      .catch(() => setFailed(true));
+  }, []);
+
+  return (
+    <div className="page">
+      <h2>Status</h2>
+      <p className="lead">Live service status for the demo.</p>
+      <div className="cards">
+        <div className="card">
+          <div className="k">
+            <Icon name="shield" size={14} /> API
+          </div>
+          <div className="v">
+            {failed ? (
+              <span className="pill warn">offline</span>
+            ) : !h ? (
+              "…"
+            ) : (
+              <span className="pill ok">{h.status === "ok" ? "online" : h.status}</span>
+            )}
+          </div>
+        </div>
+        <div className="card">
+          <div className="k">Version</div>
+          <div className="v">{h?.version ?? "…"}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function LeaveView() {
   const [d, setD] = useState<LeaveSummary | null>(null);
   const [failed, setFailed] = useState(false);

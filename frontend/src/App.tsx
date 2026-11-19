@@ -5,9 +5,9 @@ import { Chat } from "./Chat";
 import { Icon } from "./Icon";
 import { SignIn } from "./SignIn";
 import { SourcesDrawer } from "./SourcesDrawer";
-import { AttendanceView, ClaimsView, LeaveView, MetricsView, TeamView } from "./views";
+import { AttendanceView, ClaimsView, LeaveView, MetricsView, StatusView, TeamView } from "./views";
 
-type ViewId = "ask" | "leave" | "attend" | "claims" | "metrics" | "team";
+type ViewId = "ask" | "leave" | "attend" | "claims" | "metrics" | "status" | "team";
 
 const TITLES: Record<ViewId, [string, string]> = {
   ask: ["Ask assistant", "Policy & your own records · answered with sources"],
@@ -15,6 +15,7 @@ const TITLES: Record<ViewId, [string, string]> = {
   attend: ["Attendance", "Your attendance summary"],
   claims: ["My claims", "Your reimbursement claims"],
   metrics: ["Metrics", "How the assistant is performing"],
+  status: ["Status", "Live service status"],
   team: ["Team overview", "Whole-company HR aggregates · admin only"],
 };
 
@@ -26,6 +27,7 @@ const NAV: NavItem[] = [
   { id: "attend", icon: "clock", label: "Attendance" },
   { id: "claims", icon: "claim", label: "My claims" },
   { id: "metrics", icon: "chart", label: "Metrics" },
+  { id: "status", icon: "shield", label: "Status" },
 ];
 
 // Shown only to an HR admin (role from the server-resolved session; the backend 403 is the
@@ -152,6 +154,7 @@ export default function App() {
               {activeView === "attend" && <AttendanceView />}
               {activeView === "claims" && <ClaimsView />}
               {activeView === "metrics" && <MetricsView />}
+              {activeView === "status" && <StatusView />}
               {activeView === "team" && <TeamView />}
             </section>
           </main>
